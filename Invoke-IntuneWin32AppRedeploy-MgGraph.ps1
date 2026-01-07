@@ -110,10 +110,19 @@ function Invoke-IntuneWin32AppRedeploy {
         }
 
         # Connect to Microsoft Graph (interactive authentication)
+        $requiredScopes = @('DeviceManagementApps.Read.All', 'User.Read.All')
         try {
             $context = Get-MgContext
             if (-not $context) {
-                Connect-MgGraph -Scopes 'DeviceManagementApps.Read.All', 'User.Read.All' -NoWelcome -ErrorAction Stop
+                Connect-MgGraph -Scopes $requiredScopes -NoWelcome -ErrorAction Stop
+            } else {
+                # Validate that current connection has required scopes
+                $missingScopes = $requiredScopes | Where-Object { $_ -notin $context.Scopes }
+                if ($missingScopes) {
+                    Write-Warning "Current Graph connection is missing required scopes: $($missingScopes -join ', '). Reconnecting..."
+                    Disconnect-MgGraph -ErrorAction SilentlyContinue
+                    Connect-MgGraph -Scopes $requiredScopes -NoWelcome -ErrorAction Stop
+                }
             }
         } catch {
             throw "Failed to connect to Microsoft Graph: $_"
@@ -190,30 +199,33 @@ function Invoke-IntuneWin32AppRedeploy {
         $hasDisplayNameProp = $win32App | Get-Member -Name DisplayName
         $appToRedeploy = $win32App | Where-Object { if ($hasDisplayNameProp) { if ($_.DisplayName) { $true } } else { $true } } | Out-GridView -PassThru -Title "Pick app(s) for redeploy"
 
-        if ($appToRedeploy) {
-            $win32AppKeys = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\IntuneManagementExtension\Win32Apps" -Recurse -Depth 2 | Select-Object PSChildName, PSPath, PSParentPath
-
-            $appToRedeploy | ForEach-Object {
-                $appId = $_.id
-                $scopeId = $_.scopeId
-                if ($scopeId -eq 'device') { $scopeId = "00000000-0000-0000-0000-000000000000" }
-                Write-Warning "Preparing redeploy for app $appId (scope $scopeId)"
-
-                $win32AppKeyToDelete = $win32AppKeys | Where-Object { $_.PSChildName -Match "^$appId`_\d+" -and $_.PSParentPath -Match "\\$scopeId$" }
-
-                if ($win32AppKeyToDelete) {
-                    $win32AppKeyToDelete | ForEach-Object {
-                        Write-Verbose "Deleting $($_.PSPath)"
-                        Remove-Item $_.PSPath -Force -Recurse
-                    }
-                } else {
-                    throw "BUG??? App $appId with scope $scopeId wasn't found in the registry"
-                }
-            }
-
-            Write-Warning "Invoking redeploy (by restarting service IntuneManagementExtension). Redeploy can take several minutes!"
-            Restart-Service IntuneManagementExtension -Force
+        if (!$appToRedeploy) {
+            Write-Warning "No apps selected for redeploy"
+            return
         }
+
+        $win32AppKeys = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\IntuneManagementExtension\Win32Apps" -Recurse -Depth 2 | Select-Object PSChildName, PSPath, PSParentPath
+
+        $appToRedeploy | ForEach-Object {
+            $appId = $_.id
+            $scopeId = $_.scopeId
+            if ($scopeId -eq 'device') { $scopeId = "00000000-0000-0000-0000-000000000000" }
+            Write-Warning "Preparing redeploy for app $appId (scope $scopeId)"
+
+            $win32AppKeyToDelete = $win32AppKeys | Where-Object { $_.PSChildName -Match "^$appId`_\d+" -and $_.PSParentPath -Match "\\$scopeId$" }
+
+            if ($win32AppKeyToDelete) {
+                $win32AppKeyToDelete | ForEach-Object {
+                    Write-Verbose "Deleting $($_.PSPath)"
+                    Remove-Item $_.PSPath -Force -Recurse
+                }
+            } else {
+                throw "BUG??? App $appId with scope $scopeId wasn't found in the registry"
+            }
+        }
+
+        Write-Warning "Invoking redeploy (by restarting service IntuneManagementExtension). Redeploy can take several minutes!"
+        Restart-Service IntuneManagementExtension -Force
     } else {
         Write-Warning "No deployed Win32App detected"
     }
