@@ -279,10 +279,10 @@ function Invoke-IntuneWin32AppRedeploy {
         Write-Host "Relaunching in 64-bit PowerShell..." -ForegroundColor Yellow
         $scriptPath = $MyInvocation.MyCommand.Path
         if (!$scriptPath) { $scriptPath = $PSCommandPath }
-        $argList = "-ExecutionPolicy Bypass -File `"$scriptPath`""
-        if ($fetchOnline) { $argList += " -Online" }
-        if ($excludeSystemApp) { $argList += " -excludeSystemApp" }
-        & "$env:SystemRoot\SysNative\WindowsPowerShell\v1.0\powershell.exe" $argList
+        $args = @("-ExecutionPolicy", "Bypass", "-File", $scriptPath)
+        if ($fetchOnline) { $args += "-Online" }
+        if ($excludeSystemApp) { $args += "-excludeSystemApp" }
+        & "$env:SystemRoot\SysNative\WindowsPowerShell\v1.0\powershell.exe" @args
         return
     }
 
