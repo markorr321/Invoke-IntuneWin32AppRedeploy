@@ -91,29 +91,36 @@ if (! ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity
 }
 
 if ($fetchOnline) {
-    # Check for Microsoft.Graph modules
-    $requiredModules = @('Microsoft.Graph.Authentication', 'Microsoft.Graph.DeviceManagement', 'Microsoft.Graph.Users')
+    # Ensure NuGet provider is installed
+    if (!(Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue)) {
+        Write-Host "Installing NuGet provider..." -ForegroundColor Yellow
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+    }
+
+    # Check for Microsoft.Graph modules and install if missing
+    $requiredModules = @('Microsoft.Graph.Authentication', 'Microsoft.Graph.Devices.CorporateManagement', 'Microsoft.Graph.Users')
     foreach ($module in $requiredModules) {
         if (!(Get-Module $module -ListAvailable)) {
-            throw "Module '$module' is required. To install it call: Install-Module 'Microsoft.Graph' -Scope CurrentUser"
+            Write-Host "Installing required module: $module..." -ForegroundColor Yellow
+            try {
+                Install-Module $module -Scope AllUsers -Force -AllowClobber -ErrorAction Stop
+            } catch {
+                throw "Failed to install module '$module': $_"
+            }
         }
+    }
+
+    # Import the modules
+    foreach ($module in $requiredModules) {
+        Import-Module $module -ErrorAction Stop
     }
 
     # Connect to Microsoft Graph (interactive authentication)
     $requiredScopes = @('DeviceManagementApps.Read.All', 'User.Read.All')
     try {
-        $context = Get-MgContext
-        if (-not $context) {
-            Connect-MgGraph -Scopes $requiredScopes -NoWelcome -ErrorAction Stop
-        } else {
-            # Validate that current connection has required scopes
-            $missingScopes = $requiredScopes | Where-Object { $_ -notin $context.Scopes }
-            if ($missingScopes) {
-                Write-Warning "Current Graph connection is missing required scopes: $($missingScopes -join ', '). Reconnecting..."
-                Disconnect-MgGraph -ErrorAction SilentlyContinue
-                Connect-MgGraph -Scopes $requiredScopes -NoWelcome -ErrorAction Stop
-            }
-        }
+        # Always disconnect and reconnect to ensure fresh authentication
+        Disconnect-MgGraph -ErrorAction SilentlyContinue -WarningAction SilentlyContinue | Out-Null
+        Connect-MgGraph -Scopes $requiredScopes -NoWelcome -ErrorAction Stop -WarningAction SilentlyContinue | Out-Null
     } catch {
         throw "Failed to connect to Microsoft Graph: $_"
     }

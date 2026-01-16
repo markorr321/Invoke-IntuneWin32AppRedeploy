@@ -4,67 +4,65 @@ Force redeploy of Intune Win32 applications using Microsoft Graph.
 
 ## Description
 
-This script forces a redeploy of Intune Win32 apps by clearing the local registry state and restarting the Intune Management Extension service. Useful when an app deployment is stuck, failed, or needs to be re-evaluated.
+This script forces a redeploy of Intune Win32 apps by clearing the local registry state (including GRS entries) and restarting the Intune Management Extension service. Useful when an app deployment is stuck, failed, or needs to be re-evaluated.
+
+## Features
+
+- Interactive menu with options to select specific apps or redeploy all failed apps
+- Auto-elevation to administrator
+- Browser-based authentication for Microsoft Graph
+- Clears both app registry keys and GRS (Global Re-evaluation Schedule) entries
+- Detects failed apps by parsing error codes from registry
 
 ## Requirements
 
 - Windows device managed by Intune
 - PowerShell 5.1 or later
-- Run as Administrator
-- Microsoft Graph modules (only if using `-Online`):
-  - Microsoft.Graph.Authentication
-  - Microsoft.Graph.DeviceManagement
-  - Microsoft.Graph.Users
+- Microsoft.Graph.Authentication module (auto-installed if missing when using `-Online`)
 
 ## Installation
 
-### From PowerShell Gallery
 ```powershell
-Install-Script -Name Invoke-IntuneWin32AppRedeploy-MgGraph
-```
-
-### From Azure DevOps (Private)
-```powershell
-$cred = Get-Credential
-Register-PSRepository -Name "PowerShell-Repo" `
-    -SourceLocation "https://pkgs.dev.azure.com/Orr365/PowerShell-Repo/_packaging/PowerShell-Repo/nuget/v2" `
-    -InstallationPolicy Trusted `
-    -Credential $cred
-
-Install-Script -Name Invoke-IntuneWin32AppRedeploy-MgGraph -Repository PowerShell-Repo -Credential $cred
+Install-Script -Name Invoke-IntuneWin32AppRedeploy
 ```
 
 ## Usage
 
 ```powershell
-# Load the script
-. Invoke-IntuneWin32AppRedeploy-MgGraph.ps1
-
-# Basic usage - shows app IDs only
+# Basic usage - shows app IDs only (no Graph connection)
 Invoke-IntuneWin32AppRedeploy
 
-# With friendly names from Intune (prompts for Graph login)
+# With friendly names from Intune (opens browser for Graph login)
 Invoke-IntuneWin32AppRedeploy -Online
 
 # Exclude device-targeted apps
 Invoke-IntuneWin32AppRedeploy -Online -excludeSystemApp
 ```
 
+## Menu Options
+
+1. **Select apps to reinstall (GridView)** - Shows all deployed Win32 apps in a grid view for manual selection
+2. **Reinstall all failed apps** - Automatically detects and redeploys apps with non-zero error codes
+3. **Exit** - Close the tool
+
 ## Parameters
 
-| Parameter | Description |
-|-----------|-------------|
-| `-Online` | Connect to Microsoft Graph to resolve app and user display names |
-| `-excludeSystemApp` | Exclude apps targeted to the device (SYSTEM context) |
+| Parameter | Alias | Description |
+|-----------|-------|-------------|
+| `-fetchOnline` | `-Online` | Connect to Microsoft Graph to resolve app display names |
+| `-excludeSystemApp` | | Exclude apps targeted to the device (SYSTEM context) |
 
 ## How It Works
 
-1. Reads Win32 app deployment data from the local registry
-2. Optionally fetches app/user names from Microsoft Graph
-3. Displays apps in a grid view for selection
-4. Deletes registry keys for selected apps
-5. Restarts the Intune Management Extension service
-6. Intune re-evaluates and redeploys the selected apps
+1. Auto-elevates to administrator if not already running elevated
+2. Connects to Microsoft Graph (if `-Online` specified) using browser authentication
+3. Reads Win32 app deployment data from the local registry
+4. Displays menu for user to choose action
+5. For selected apps:
+   - Deletes registry keys for the app
+   - Clears GRS (Global Re-evaluation Schedule) entries
+6. Restarts the Intune Management Extension service
+7. Intune re-evaluates and redeploys the selected apps
 
 ## Common Use Cases
 
