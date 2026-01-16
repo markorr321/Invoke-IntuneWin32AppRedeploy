@@ -76,9 +76,6 @@ function Invoke-IntuneWin32AppRedeploy {
         Write-Host "Loading Microsoft Graph module..." -ForegroundColor Cyan
         Import-Module 'Microsoft.Graph.Authentication' -ErrorAction Stop
 
-        # Get access token using MSAL with browser authentication
-        $clientId = "14d82eec-204b-4c2f-b7e8-296a70dab67e"  # Microsoft Graph PowerShell client ID
-
         Write-Host "Connecting to Microsoft Graph (browser auth)..." -ForegroundColor Cyan
 
         try {
@@ -91,17 +88,32 @@ function Invoke-IntuneWin32AppRedeploy {
                 Add-Type -Path $msalDll.FullName -ErrorAction SilentlyContinue
             }
 
-            # Build MSAL public client application with default OS browser
+            # Build MSAL public client application
+            $clientId = "14d82eec-204b-4c2f-b7e8-296a70dab67e"  # Microsoft Graph PowerShell client ID
+            $redirectUri = "http://localhost:8400"
+
             $publicClient = [Microsoft.Identity.Client.PublicClientApplicationBuilder]::Create($clientId).
                 WithAuthority("https://login.microsoftonline.com/common").
-                WithDefaultRedirectUri().
+                WithRedirectUri($redirectUri).
                 Build()
 
             # Acquire token interactively using system browser
             [string[]]$scopeArray = @('https://graph.microsoft.com/DeviceManagementApps.Read.All')
+
+            # Build the auth URL and open browser manually
+            $authUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" +
+                "client_id=$clientId" +
+                "&response_type=code" +
+                "&redirect_uri=$([System.Web.HttpUtility]::UrlEncode($redirectUri))" +
+                "&scope=$([System.Web.HttpUtility]::UrlEncode('https://graph.microsoft.com/DeviceManagementApps.Read.All offline_access'))" +
+                "&prompt=select_account"
+
+            Write-Host "Opening browser for authentication..." -ForegroundColor Yellow
+            Start-Process $authUrl
+
             $authResult = $publicClient.AcquireTokenInteractive($scopeArray).
                 WithPrompt([Microsoft.Identity.Client.Prompt]::SelectAccount).
-                WithSystemWebViewOptions([Microsoft.Identity.Client.SystemWebViewOptions]::new()).
+                WithUseEmbeddedWebView($false).
                 ExecuteAsync().GetAwaiter().GetResult()
 
             # Connect to Graph using the access token
@@ -279,10 +291,10 @@ function Invoke-IntuneWin32AppRedeploy {
         Write-Host "Relaunching in 64-bit PowerShell..." -ForegroundColor Yellow
         $scriptPath = $MyInvocation.MyCommand.Path
         if (!$scriptPath) { $scriptPath = $PSCommandPath }
-        $args = @("-ExecutionPolicy", "Bypass", "-File", $scriptPath)
-        if ($fetchOnline) { $args += "-Online" }
-        if ($excludeSystemApp) { $args += "-excludeSystemApp" }
-        & "$env:SystemRoot\SysNative\WindowsPowerShell\v1.0\powershell.exe" @args
+        $psArgs = @("-ExecutionPolicy", "Bypass", "-File", $scriptPath)
+        if ($fetchOnline) { $psArgs += "-Online" }
+        if ($excludeSystemApp) { $psArgs += "-excludeSystemApp" }
+        & "$env:SystemRoot\SysNative\WindowsPowerShell\v1.0\powershell.exe" @psArgs
         return
     }
 
