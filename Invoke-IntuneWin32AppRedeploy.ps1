@@ -74,23 +74,21 @@ function Invoke-IntuneWin32AppRedeploy {
             }
         }
 
-        # Import specifically from AllUsers path to avoid OneDrive issues
+        # Import from AllUsers path to avoid OneDrive issues
         Write-Host "Loading Microsoft Graph module..." -ForegroundColor Cyan
-        $modulePath = Get-ChildItem "$env:ProgramFiles\WindowsPowerShell\Modules\Microsoft.Graph.Authentication" -Directory |
-            Sort-Object Name -Descending | Select-Object -First 1
-        $psd1File = Join-Path $modulePath.FullName "Microsoft.Graph.Authentication.psd1"
-        Import-Module $psd1File -ErrorAction Stop
+        $moduleBase = "$env:ProgramFiles\WindowsPowerShell\Modules\Microsoft.Graph.Authentication"
+        $modulePath = Get-ChildItem $moduleBase -Directory | Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1 -ExpandProperty FullName
+        Import-Module "$modulePath\Microsoft.Graph.Authentication.psd1" -ErrorAction Stop
 
         Write-Host "Connecting to Microsoft Graph (browser auth)..." -ForegroundColor Cyan
 
         try {
             Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
 
-            # Load MSAL assembly from the Graph module (use AllUsers path to avoid OneDrive issues)
-            $msalPath = $modulePath.FullName
-            $msalDll = Get-ChildItem -Path $msalPath -Recurse -Filter "Microsoft.Identity.Client.dll" | Select-Object -First 1
-            if ($msalDll) {
-                Add-Type -Path $msalDll.FullName -ErrorAction SilentlyContinue
+            # Load MSAL assembly from the Graph module
+            $msalDll = "$modulePath\Dependencies\Desktop\Microsoft.Identity.Client.dll"
+            if (Test-Path $msalDll) {
+                Add-Type -Path $msalDll -ErrorAction SilentlyContinue
             }
 
             # Build MSAL public client application
