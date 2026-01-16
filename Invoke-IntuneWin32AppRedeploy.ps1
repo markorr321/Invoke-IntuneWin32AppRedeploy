@@ -78,7 +78,8 @@ function Invoke-IntuneWin32AppRedeploy {
         Write-Host "Loading Microsoft Graph module..." -ForegroundColor Cyan
         $modulePath = Get-ChildItem "$env:ProgramFiles\WindowsPowerShell\Modules\Microsoft.Graph.Authentication" -Directory |
             Sort-Object Name -Descending | Select-Object -First 1
-        Import-Module $modulePath.FullName -ErrorAction Stop
+        $psd1File = Join-Path $modulePath.FullName "Microsoft.Graph.Authentication.psd1"
+        Import-Module $psd1File -ErrorAction Stop
 
         Write-Host "Connecting to Microsoft Graph (browser auth)..." -ForegroundColor Cyan
 
