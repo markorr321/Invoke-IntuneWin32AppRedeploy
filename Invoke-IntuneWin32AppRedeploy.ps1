@@ -62,9 +62,11 @@ function Invoke-IntuneWin32AppRedeploy {
             Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
         }
 
-        # Check for Microsoft.Graph.Authentication module and install if missing
-        if (!(Get-Module 'Microsoft.Graph.Authentication' -ListAvailable)) {
-            Write-Host "Installing required module: Microsoft.Graph.Authentication..." -ForegroundColor Yellow
+        # Check for Microsoft.Graph.Authentication module in AllUsers scope (Program Files)
+        # OneDrive-synced user modules can cause assembly loading issues
+        $allUsersPath = "$env:ProgramFiles\WindowsPowerShell\Modules\Microsoft.Graph.Authentication"
+        if (!(Test-Path $allUsersPath)) {
+            Write-Host "Installing required module: Microsoft.Graph.Authentication (AllUsers scope)..." -ForegroundColor Yellow
             try {
                 Install-Module 'Microsoft.Graph.Authentication' -Scope AllUsers -Force -AllowClobber -ErrorAction Stop
             } catch {
@@ -72,17 +74,19 @@ function Invoke-IntuneWin32AppRedeploy {
             }
         }
 
-        # Import the module
+        # Import specifically from AllUsers path to avoid OneDrive issues
         Write-Host "Loading Microsoft Graph module..." -ForegroundColor Cyan
-        Import-Module 'Microsoft.Graph.Authentication' -ErrorAction Stop
+        $modulePath = Get-ChildItem "$env:ProgramFiles\WindowsPowerShell\Modules\Microsoft.Graph.Authentication" -Directory |
+            Sort-Object Name -Descending | Select-Object -First 1
+        Import-Module $modulePath.FullName -ErrorAction Stop
 
         Write-Host "Connecting to Microsoft Graph (browser auth)..." -ForegroundColor Cyan
 
         try {
             Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
 
-            # Load MSAL assembly from the Graph module
-            $msalPath = (Get-Module Microsoft.Graph.Authentication -ListAvailable | Select-Object -First 1).ModuleBase
+            # Load MSAL assembly from the Graph module (use AllUsers path to avoid OneDrive issues)
+            $msalPath = $modulePath.FullName
             $msalDll = Get-ChildItem -Path $msalPath -Recurse -Filter "Microsoft.Identity.Client.dll" | Select-Object -First 1
             if ($msalDll) {
                 Add-Type -Path $msalDll.FullName -ErrorAction SilentlyContinue
@@ -90,27 +94,13 @@ function Invoke-IntuneWin32AppRedeploy {
 
             # Build MSAL public client application
             $clientId = "14d82eec-204b-4c2f-b7e8-296a70dab67e"  # Microsoft Graph PowerShell client ID
-            $redirectUri = "http://localhost:8400"
-
             $publicClient = [Microsoft.Identity.Client.PublicClientApplicationBuilder]::Create($clientId).
                 WithAuthority("https://login.microsoftonline.com/common").
-                WithRedirectUri($redirectUri).
+                WithRedirectUri("http://localhost").
                 Build()
 
             # Acquire token interactively using system browser
             [string[]]$scopeArray = @('https://graph.microsoft.com/DeviceManagementApps.Read.All')
-
-            # Build the auth URL and open browser manually
-            $authUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?" +
-                "client_id=$clientId" +
-                "&response_type=code" +
-                "&redirect_uri=$([System.Web.HttpUtility]::UrlEncode($redirectUri))" +
-                "&scope=$([System.Web.HttpUtility]::UrlEncode('https://graph.microsoft.com/DeviceManagementApps.Read.All offline_access'))" +
-                "&prompt=select_account"
-
-            Write-Host "Opening browser for authentication..." -ForegroundColor Yellow
-            Start-Process $authUrl
-
             $authResult = $publicClient.AcquireTokenInteractive($scopeArray).
                 WithPrompt([Microsoft.Identity.Client.Prompt]::SelectAccount).
                 WithUseEmbeddedWebView($false).
