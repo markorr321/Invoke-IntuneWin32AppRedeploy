@@ -274,6 +274,18 @@ function Invoke-IntuneWin32AppRedeploy {
     #endregion helper functions
 
     #region main
+    # Ensure we're running in 64-bit PowerShell (required for correct registry access)
+    if ($env:PROCESSOR_ARCHITEW6432 -eq "AMD64") {
+        Write-Host "Relaunching in 64-bit PowerShell..." -ForegroundColor Yellow
+        $scriptPath = $MyInvocation.MyCommand.Path
+        if (!$scriptPath) { $scriptPath = $PSCommandPath }
+        $argList = "-ExecutionPolicy Bypass -File `"$scriptPath`""
+        if ($fetchOnline) { $argList += " -Online" }
+        if ($excludeSystemApp) { $argList += " -excludeSystemApp" }
+        & "$env:SystemRoot\SysNative\WindowsPowerShell\v1.0\powershell.exe" $argList
+        return
+    }
+
     # Auto-elevate to admin if not already
     if (! ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
         Write-Host "Elevating to administrator..." -ForegroundColor Yellow
