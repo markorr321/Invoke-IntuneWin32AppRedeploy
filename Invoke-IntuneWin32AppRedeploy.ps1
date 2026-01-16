@@ -91,17 +91,17 @@ function Invoke-IntuneWin32AppRedeploy {
                 Add-Type -Path $msalDll.FullName -ErrorAction SilentlyContinue
             }
 
-            # Build MSAL public client application
+            # Build MSAL public client application with default OS browser
             $publicClient = [Microsoft.Identity.Client.PublicClientApplicationBuilder]::Create($clientId).
                 WithAuthority("https://login.microsoftonline.com/common").
-                WithRedirectUri("http://localhost").
+                WithDefaultRedirectUri().
                 Build()
 
             # Acquire token interactively using system browser
             [string[]]$scopeArray = @('https://graph.microsoft.com/DeviceManagementApps.Read.All')
             $authResult = $publicClient.AcquireTokenInteractive($scopeArray).
                 WithPrompt([Microsoft.Identity.Client.Prompt]::SelectAccount).
-                WithUseEmbeddedWebView($false).
+                WithSystemWebViewOptions([Microsoft.Identity.Client.SystemWebViewOptions]::new()).
                 ExecuteAsync().GetAwaiter().GetResult()
 
             # Connect to Graph using the access token
